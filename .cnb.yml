@@ -1,28 +1,38 @@
 main:
   push:
-    - name: isolated-consumer-history-import
+    - name: isolated-current-consumer-and-review-fixture
       docker:
-        image: node:24-bookworm
+        image: node:24-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a
       git:
         submodules: false
       stages:
-        - name: Import exact reviewed Pilot history to isolated native branches
+        - name: Create isolated current consumer branches
           script: |
             set -eu
-            git fetch --no-tags https://github.com/Skyline-Gazer/ALNILAM.git 19741ffe51429ee1b7bd749b5ea934c771d607b4
-            node --input-type=module <<'JS'
-            import {execFileSync} from 'node:child_process';
-            const sha='19741ffe51429ee1b7bd749b5ea934c771d607b4';
-            const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
-            const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
-            execFileSync('git',['push',url,sha+':refs/heads/dev',sha+':refs/heads/chore/94-cnb-browser-ci-pilot'],{env,stdio:'inherit'});
-            JS
-        - name: Create bounded isolated Agent Fix fixture
-          script: |
-            set -eu
-            git switch -c feat/cnb-agent-fix 19741ffe51429ee1b7bd749b5ea934c771d607b4
+            git fetch --no-tags https://github.com/Skyline-Gazer/ALNILAM.git 851e141838a0ec7795416bb893f082fb0a8dc7ea
             git config user.name 'CNB Acceptance'
             git config user.email 'acceptance@example.invalid'
+            git switch -c acceptance/cnb-v2 851e141838a0ec7795416bb893f082fb0a8dc7ea
+            node --input-type=module <<'JS'
+            import fs from 'node:fs';
+            const file='.cnb.yml'; let s=fs.readFileSync(file,'utf8');
+            if (s.split('\ndev:\n').length!==2) throw Error('unexpected target selector');
+            s=s.replace('\ndev:\n','\nacceptance/cnb-v2:\n');
+            s += `\n$:\n  pull_request.comment@npc:\n    default:\n      git:\n        submodules: false\n      docker:\n        image: cnbcool/default-npc@sha256:50a3a471a52d3ebd8998550af92f4c73cfd8939fc69c55e64cb2509871250cb8\n      stages:\n        - name: read-only-npc-review\n          type: npc:go\n          timeout: 5m\n          options:\n            maxTurns: 8\n`;
+            fs.writeFileSync(file,s);
+            JS
+            git add .cnb.yml
+            git commit -m 'ci: prepare protected native acceptance target'
+            node --input-type=module <<'JS'
+            import {execFileSync} from 'node:child_process';
+            const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
+            const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
+            execFileSync('git',['push',url,'HEAD:refs/heads/acceptance/cnb-v2','851e141838a0ec7795416bb893f082fb0a8dc7ea:refs/heads/chore/94-cnb-browser-ci-pilot'],{env,stdio:'inherit'});
+            JS
+        - name: Create isolated native defect source branch
+          script: |
+            set -eu
+            git switch -c feat/cnb-agent-fix-v2
             mkdir -p packages/core/src scripts/tests
             cat > packages/core/src/cnb-acceptance-fixture.mjs <<'JS'
             export function divide(left, right) {
@@ -41,5 +51,5 @@ main:
             import {execFileSync} from 'node:child_process';
             const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
             const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
-            execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix'],{env,stdio:'inherit'});
+            execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix-v2'],{env,stdio:'inherit'});
             JS
