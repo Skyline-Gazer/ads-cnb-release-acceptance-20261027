@@ -25,6 +25,8 @@ main:
           script: |
             set -eu
             cd consumer
+            mkdir -p .tmp
+            export TMPDIR="$PWD/.tmp"
             pnpm test
             pnpm check
             pnpm build
