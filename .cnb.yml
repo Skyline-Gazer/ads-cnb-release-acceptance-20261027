@@ -1,0 +1,54 @@
+main:
+  push:
+    - &runtime
+      name: isolated-alnilam-runtime
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 2
+      docker:
+        image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+      git:
+        submodules: false
+      stages:
+        - name: Runtime and immutable Consumer checkout
+          script: |
+            set -eu
+            node --version
+            uname -m
+            npm install -g pnpm@10.19.0
+            git clone --no-checkout https://github.com/Skyline-Gazer/ALNILAM.git consumer
+            cd consumer
+            git checkout --detach b53565f1a7e28aad3df4b897a40c393f95247b1a
+            pnpm install --frozen-lockfile
+            node --input-type=module -e 'import {chromium} from "@playwright/test"; const b=await chromium.launch(); console.log(await b.version()); await b.close()'
+        - name: Consumer deterministic checks
+          script: |
+            set -eu
+            cd consumer
+            pnpm test
+            pnpm check
+            pnpm build
+            ALNILAM_SITE_URL=https://example.com/ALNILAM/ node scripts/compose.mjs --site sites/demo --out dist/nested-base
+            pnpm browser
+        - name: Upload initial browser evidence
+          image: cnbcool/attachments:v1.1.5
+          settings:
+            attachments:
+              - consumer/browser-results/**
+            ttl: 14
+          exports:
+            FILES: UPLOADED_FILES
+        - name: Required upload receipt
+          script: test -n "$UPLOADED_FILES"
+      failStages:
+        - name: Upload failed browser evidence
+          image: cnbcool/attachments:v1.1.5
+          settings:
+            attachments:
+              - consumer/browser-results/**
+            ttl: 14
+      endStages:
+        - name: Finish isolated runtime
+          script: echo runtime-finished
+  web_trigger:
+    - *runtime
