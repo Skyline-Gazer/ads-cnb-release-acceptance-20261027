@@ -1,56 +1,19 @@
 main:
   push:
-    - &runtime
-      name: isolated-alnilam-runtime
-      runner:
-        tags: cnb:arch:amd64
-        cpus: 2
+    - name: isolated-consumer-history-import
       docker:
-        image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+        image: node:24-bookworm
       git:
         submodules: false
       stages:
-        - name: Runtime and immutable Consumer checkout
+        - name: Import exact reviewed Pilot history to isolated native branches
           script: |
             set -eu
-            node --version
-            uname -m
-            npm install -g pnpm@10.19.0
-            git clone --no-checkout https://github.com/Skyline-Gazer/ALNILAM.git consumer
-            cd consumer
-            git checkout --detach b53565f1a7e28aad3df4b897a40c393f95247b1a
-            pnpm install --frozen-lockfile
-            node --input-type=module -e 'import {chromium} from "@playwright/test"; const b=await chromium.launch(); console.log(await b.version()); await b.close()'
-        - name: Consumer deterministic checks
-          script: |
-            set -eu
-            cd consumer
-            mkdir -p .tmp
-            export TMPDIR="$PWD/.tmp"
-            pnpm test
-            pnpm check
-            pnpm build
-            ALNILAM_SITE_URL=https://example.com/ALNILAM/ node scripts/compose.mjs --site sites/demo --out dist/nested-base
-            pnpm browser
-        - name: Upload initial browser evidence
-          image: cnbcool/attachments:v1.1.5
-          settings:
-            attachments:
-              - consumer/browser-results/**
-            ttl: 14
-          exports:
-            FILES: UPLOADED_FILES
-        - name: Required upload receipt
-          script: test -n "$UPLOADED_FILES"
-      failStages:
-        - name: Upload failed browser evidence
-          image: cnbcool/attachments:v1.1.5
-          settings:
-            attachments:
-              - consumer/browser-results/**
-            ttl: 14
-      endStages:
-        - name: Finish isolated runtime
-          script: echo runtime-finished
-  web_trigger:
-    - *runtime
+            git fetch --no-tags https://github.com/Skyline-Gazer/ALNILAM.git 19741ffe51429ee1b7bd749b5ea934c771d607b4
+            node --input-type=module <<'JS'
+            import {execFileSync} from 'node:child_process';
+            const sha='19741ffe51429ee1b7bd749b5ea934c771d607b4';
+            const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
+            const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
+            execFileSync('git',['push',url,sha+':refs/heads/dev',sha+':refs/heads/chore/94-cnb-browser-ci-pilot'],{env,stdio:'inherit'});
+            JS
