@@ -9,16 +9,18 @@ main:
         - name: Create isolated current consumer branches
           script: |
             set -eu
-            git fetch --no-tags https://github.com/Skyline-Gazer/ALNILAM.git 851e141838a0ec7795416bb893f082fb0a8dc7ea
+            refs="$(git ls-remote origin refs/heads/acceptance/cnb-v3)"
+            if [ -n "$refs" ]; then echo "target already exists; no changes"; exit 0; fi
+            git fetch --no-tags https://github.com/Skyline-Gazer/ALNILAM.git 2179e690f536a51449195f384d40dde73c897d5b
             git config user.name 'CNB Acceptance'
             git config user.email 'acceptance@example.invalid'
-            git switch -c acceptance/cnb-v2 851e141838a0ec7795416bb893f082fb0a8dc7ea
+            git switch -c acceptance/cnb-v3 2179e690f536a51449195f384d40dde73c897d5b
             node --input-type=module <<'JS'
             import fs from 'node:fs';
             const file='.cnb.yml'; let s=fs.readFileSync(file,'utf8');
             if (s.split('\ndev:\n').length!==2) throw Error('unexpected target selector');
-            s=s.replace('\ndev:\n','\nacceptance/cnb-v2:\n');
-            s += `\n$:\n  pull_request.comment@npc:\n    default:\n      git:\n        submodules: false\n      docker:\n        image: cnbcool/default-npc@sha256:50a3a471a52d3ebd8998550af92f4c73cfd8939fc69c55e64cb2509871250cb8\n      stages:\n        - name: read-only-npc-review\n          type: npc:go\n          timeout: 5m\n          options:\n            maxTurns: 8\n`;
+            s=s.replace('\ndev:\n','\nacceptance/cnb-v3:\n');
+            s=s.replace("acceptance/cnb-v3:\n  pull_request:\n", "acceptance/cnb-v3:\n  pull_request:\n"+"    - name: isolated-review-author-probe\n      breakIfModify: true\n      retry: 0\n      docker:\n        image: node:24-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a\n      git:\n        submodules: false\n      stages:\n        - name: Observe comment-only native review identity\n          script: |\n            node --input-type=module <<'JS'\n            const e=process.env, marker=`CNB isolated review identity probe ${e.CNB_BUILD_ID}`;\n            if(e.CNB_API_ENDPOINT!=='https://api.cnb.cool'||!/^[1-9][0-9]*$/.test(e.CNB_PULL_REQUEST_IID)) throw Error('invalid native context');\n            const url=`${e.CNB_API_ENDPOINT}/${e.CNB_REPO_SLUG}/-/pulls/${e.CNB_PULL_REQUEST_IID}/reviews`;\n            const headers={Authorization:`Bearer ${e.CNB_TOKEN}`,Accept:'application/vnd.cnb.api+json','Content-Type':'application/json'};\n            const post=await fetch(url,{method:'POST',headers,body:JSON.stringify({event:'comment',work_mode:false,body:marker,comments:[]}),signal:AbortSignal.timeout(30000)});\n            if(!post.ok) throw Error(`review POST ${post.status}`);\n            const response=await fetch(`${url}?page=1&page_size=100`,{headers,signal:AbortSignal.timeout(30000)});\n            if(!response.ok) throw Error(`review GET ${response.status}`);\n            const rows=await response.json(), row=Array.isArray(rows)&&rows.find(x=>x.body===marker);\n            if(!row) throw Error('identity readback unavailable');\n            console.log(JSON.stringify({state:row.state,author:row.author?.username||null,user:row.user?.username||null}));\n            JS\n");
             fs.writeFileSync(file,s);
             JS
             git add .cnb.yml
@@ -27,12 +29,15 @@ main:
             import {execFileSync} from 'node:child_process';
             const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
             const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
-            execFileSync('git',['push',url,'HEAD:refs/heads/acceptance/cnb-v2','851e141838a0ec7795416bb893f082fb0a8dc7ea:refs/heads/chore/94-cnb-browser-ci-pilot'],{env,stdio:'inherit'});
+            execFileSync('git',['push',url,'HEAD:refs/heads/acceptance/cnb-v3','2179e690f536a51449195f384d40dde73c897d5b:refs/heads/chore/94-cnb-browser-ci-pilot'],{env,stdio:'inherit'});
             JS
         - name: Create isolated native defect source branch
           script: |
             set -eu
-            git switch -c feat/cnb-agent-fix-v2
+            refs="$(git ls-remote origin refs/heads/feat/cnb-agent-fix-v3)"
+            if [ -n "$refs" ]; then echo "source already exists; no changes"; exit 0; fi
+            git fetch origin refs/heads/acceptance/cnb-v3
+            git switch -c feat/cnb-agent-fix-v3 FETCH_HEAD
             mkdir -p packages/core/src scripts/tests
             cat > packages/core/src/cnb-acceptance-fixture.mjs <<'JS'
             export function divide(left, right) {
@@ -51,5 +56,19 @@ main:
             import {execFileSync} from 'node:child_process';
             const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
             const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
-            execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix-v2'],{env,stdio:'inherit'});
+            execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix-v3'],{env,stdio:'inherit'});
             JS
+
+$:
+  pull_request.comment@npc:
+    - name: custom-read-only-npc
+      git:
+        submodules: false
+      docker:
+        image: cnbcool/default-npc@sha256:50a3a471a52d3ebd8998550af92f4c73cfd8939fc69c55e64cb2509871250cb8
+      stages:
+        - name: read-only-review
+          type: npc:go
+          timeout: 5m
+          options:
+            maxTurns: 8
