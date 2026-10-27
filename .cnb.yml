@@ -59,6 +59,38 @@ main:
             execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix-v3'],{env,stdio:'inherit'});
             JS
 
+        - name: Fix the reviewed isolated defect once
+          script: |
+            set -eu
+            current="$(git ls-remote origin refs/heads/feat/cnb-agent-fix-v3 | cut -f1)"
+            if [ "$current" != a665f1af5ef65bead86117860b868df54e8b8ae5 ]; then echo "source already changed; no retry"; exit 0; fi
+            git fetch origin refs/heads/feat/cnb-agent-fix-v3
+            git switch -c fixture-repair FETCH_HEAD
+            git config user.name 'CNB Acceptance'
+            git config user.email 'acceptance@example.invalid'
+            mkdir -p scripts/tests/fixtures
+            git mv packages/core/src/cnb-acceptance-fixture.mjs scripts/tests/fixtures/cnb-acceptance-fixture.mjs
+            node --input-type=module <<'JS'
+            import fs from 'node:fs';
+            const fixture='scripts/tests/fixtures/cnb-acceptance-fixture.mjs';
+            const test='scripts/tests/cnb-agent-fix.test.mjs';
+            let f=fs.readFileSync(fixture,'utf8'), t=fs.readFileSync(test,'utf8');
+            if(!f.includes('return left * right;')||!t.includes('../../packages/core/src/cnb-acceptance-fixture.mjs')) throw Error('unexpected fixture');
+            f=f.replace('return left * right;','return left / right;');
+            t=t.replace('../../packages/core/src/cnb-acceptance-fixture.mjs','./fixtures/cnb-acceptance-fixture.mjs');
+            t += "test('division preserves signs and zero semantics', () => { assert.equal(divide(-9, 3), -3); assert.equal(divide(9, 0), Infinity); });\n";
+            fs.writeFileSync(fixture,f);fs.writeFileSync(test,t);
+            JS
+            node --test scripts/tests/cnb-agent-fix.test.mjs
+            git add scripts/tests packages/core/src/cnb-acceptance-fixture.mjs
+            git commit -m 'fix: correct isolated division and move fixture into tests'
+            node --input-type=module <<'JS'
+            import {execFileSync} from 'node:child_process';
+            const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
+            const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
+            execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix-v3'],{env,stdio:'inherit'});
+            JS
+
 $:
   pull_request.comment@npc:
     - name: custom-read-only-npc
