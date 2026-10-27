@@ -82,7 +82,7 @@ main:
             fs.writeFileSync(fixture,f);fs.writeFileSync(test,t);
             JS
             node --test scripts/tests/cnb-agent-fix.test.mjs
-            git add scripts/tests packages/core/src/cnb-acceptance-fixture.mjs
+            git add -A scripts/tests packages/core/src
             git commit -m 'fix: correct isolated division and move fixture into tests'
             node --input-type=module <<'JS'
             import {execFileSync} from 'node:child_process';
