@@ -17,3 +17,29 @@ main:
             const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
             execFileSync('git',['push',url,sha+':refs/heads/dev',sha+':refs/heads/chore/94-cnb-browser-ci-pilot'],{env,stdio:'inherit'});
             JS
+        - name: Create bounded isolated Agent Fix fixture
+          script: |
+            set -eu
+            git switch -c feat/cnb-agent-fix 19741ffe51429ee1b7bd749b5ea934c771d607b4
+            git config user.name 'CNB Acceptance'
+            git config user.email 'acceptance@example.invalid'
+            mkdir -p packages/core/src scripts/tests
+            cat > packages/core/src/cnb-acceptance-fixture.mjs <<'JS'
+            export function divide(left, right) {
+              return left * right;
+            }
+            JS
+            cat > scripts/tests/cnb-agent-fix.test.mjs <<'JS'
+            import {test} from 'node:test';
+            import assert from 'node:assert/strict';
+            import {divide} from '../../packages/core/src/cnb-acceptance-fixture.mjs';
+            test('division returns the quotient', () => assert.equal(divide(8, 2), 4));
+            JS
+            git add packages/core/src/cnb-acceptance-fixture.mjs scripts/tests/cnb-agent-fix.test.mjs
+            git commit -m 'test: exercise isolated division regression'
+            node --input-type=module <<'JS'
+            import {execFileSync} from 'node:child_process';
+            const url='https://cnb.cool/KoolingMachine/ads-cnb-acceptance-20261027';
+            const env={...process.env,GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'http.'+url+'/.extraheader',GIT_CONFIG_VALUE_0:'Authorization: Basic '+Buffer.from('cnb:'+process.env.CNB_TOKEN).toString('base64')};
+            execFileSync('git',['push',url,'HEAD:refs/heads/feat/cnb-agent-fix'],{env,stdio:'inherit'});
+            JS
